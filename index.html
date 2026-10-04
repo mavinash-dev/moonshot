@@ -188,17 +188,7 @@ svg.chart{width:100%;height:100%}
     <p>One key covers everything. Get it free at <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></p>
     <input type="password" id="gkey" placeholder="AIza…" autocomplete="off">
   </div>
-  <div class="setup-card">
-    <div class="setup-label">GitHub Repo</div>
-    <p>Same repo where you push weekly Claude plans and daily logs are committed automatically.</p>
-    <input type="text" id="ghrepo" placeholder="mavinash-dev/moonshot" autocomplete="off">
-  </div>
-  <div class="setup-card">
-    <div class="setup-label">GitHub PAT</div>
-    <p>Fine-grained token with Contents: Read & Write on this repo. Stored only on this device.</p>
-    <input type="password" id="ghpat" placeholder="github_pat_…" autocomplete="off">
-  </div>
-  <p class="setup-note">All credentials stored only on this device.</p>
+  <p class="setup-note">Stored only on this device.</p>
   <button class="btn btn-white btn-full" style="max-width:400px" onclick="saveSetup()">Start →</button>
 </div>
 
@@ -405,7 +395,7 @@ const KEY_LIFTS = ['Wide-Grip Lat Pulldowns / Pull-ups','Cable Lateral Raises','
 
 // ═══ STATE ════════════════════════════════════════════════════════════════════
 let GKEY = localStorage.getItem('ms_k') || '';
-let GHREPO = localStorage.getItem('ms_repo') || '';
+const GHREPO = 'mavinash-dev/moonshot';
 let GHPAT = localStorage.getItem('ms_pat') || '';
 let chatHist = [];
 let curDay = todayIdx();
@@ -873,11 +863,10 @@ function go(name){
 
 // ═══ SETTINGS ════════════════════════════════════════════════════════════════
 function openSettings(){
-  const c=prompt('Settings:\n1 — Change Gemini key\n2 — Change GitHub repo\n3 — Change GitHub PAT\n4 — Clear all data\n\nEnter number:');
+  const c=prompt('Settings:\n1 — Change Gemini key\n2 — Change GitHub PAT\n3 — Clear all data\n\nEnter number:');
   if(c==='1'){const k=prompt('Gemini key (AIza…):');if(k?.startsWith('AIza')){localStorage.setItem('ms_k',k);GKEY=k;alert('Updated!');}}
-  else if(c==='2'){const r=prompt('GitHub repo (user/repo):');if(r?.includes('/')){localStorage.setItem('ms_repo',r);GHREPO=r;fetchWeeklyPlan();}}
-  else if(c==='3'){const p=prompt('GitHub PAT:');if(p){localStorage.setItem('ms_pat',p);GHPAT=p;alert('Updated!');}}
-  else if(c==='4'){if(confirm('Delete ALL Moonshot data?')){Object.keys(localStorage).filter(k=>k.startsWith('ms_')).forEach(k=>localStorage.removeItem(k));location.reload();}}
+  else if(c==='2'){const p=prompt('GitHub PAT (github_pat_…):');if(p){localStorage.setItem('ms_pat',p);GHPAT=p;alert('PAT saved!');}}
+  else if(c==='3'){if(confirm('Delete ALL Moonshot data?')){Object.keys(localStorage).filter(k=>k.startsWith('ms_')).forEach(k=>localStorage.removeItem(k));location.reload();}}
 }
 
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
@@ -889,12 +878,8 @@ function exportData(){const all={};Object.keys(localStorage).filter(k=>k.startsW
 // ═══ SETUP / BOOT ════════════════════════════════════════════════════════════
 function saveSetup(){
   const gk=document.getElementById('gkey').value.trim();
-  const repo=document.getElementById('ghrepo').value.trim();
-  const pat=document.getElementById('ghpat').value.trim();
   if(!gk.startsWith('AIza')){alert('Gemini key must start with AIza');return;}
   localStorage.setItem('ms_k',gk);GKEY=gk;
-  if(repo.includes('/')){localStorage.setItem('ms_repo',repo);GHREPO=repo;}
-  if(pat){localStorage.setItem('ms_pat',pat);GHPAT=pat;}
   boot();
 }
 function boot(){
