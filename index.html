@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moonshot — AI Gym Coach</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --border: #2a2a2a;
+    --accent: #a3e635;
+    --accent2: #84cc16;
+    --text: #f0f0f0;
+    --muted: #666;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* API Key Screen */
+  #apiscreen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 24px; text-align: center;
+  }
+  #apiscreen h1 { font-size: 2rem; color: var(--accent); margin-bottom: 8px; }
+  #apiscreen p { color: var(--muted); margin-bottom: 24px; font-size: 0.9rem; }
+  #apiscreen input {
+    width: 100%; max-width: 420px; padding: 12px 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 1rem; margin-bottom: 12px;
+  }
+  #apiscreen input:focus { outline: none; border-color: var(--accent); }
+  .btn {
+    padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 0.95rem; font-weight: 600; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+
+  /* Main App */
+  #app { display: none; flex-direction: column; min-height: 100vh; }
+
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  header h1 { font-size: 1.2rem; color: var(--accent); font-weight: 700; }
+  header .meta { font-size: 0.75rem; color: var(--muted); }
+
+  nav {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  nav button {
+    flex: 1; min-width: 80px; padding: 12px 8px; background: none; border: none;
+    color: var(--muted); font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap;
+  }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  nav button:hover:not(.active) { color: var(--text); }
+
+  .tab { display: none; flex-direction: column; flex: 1; padding: 16px; gap: 12px; }
+  .tab.active { display: flex; }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .card-title { font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+
+  /* Chat */
+  #chatbox {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    min-height: 300px; max-height: 55vh; padding: 4px 0;
+  }
+  .msg { display: flex; gap: 8px; align-items: flex-start; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg-bubble {
+    max-width: 80%; padding: 10px 14px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .msg-bubble { background: var(--accent); color: #000; border-radius: 14px 14px 4px 14px; }
+  .msg.ai .msg-bubble { background: var(--surface2); color: var(--text); border-radius: 14px 14px 14px 4px; }
+  .msg-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0; margin-top: 2px; }
+  .msg.ai .msg-avatar { background: var(--accent); color: #000; }
+  .msg.user .msg-avatar { background: var(--surface2); }
+
+  .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-input-row textarea {
+    flex: 1; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text); font-size: 0.9rem; resize: none;
+    min-height: 44px; max-height: 120px; font-family: inherit; line-height: 1.4;
+  }
+  .chat-input-row textarea:focus { outline: none; border-color: var(--accent); }
+  .img-btn { position: relative; overflow: hidden; }
+  .img-btn input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+
+  .img-counter { font-size: 0.75rem; color: var(--muted); text-align: right; }
+  .img-counter.warn { color: var(--warn); }
+  .img-counter.danger { color: var(--danger); }
+
+  /* Workout Log */
+  .day-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .day-btn {
+    padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: none; color: var(--muted); font-size: 0.78rem; cursor: pointer; transition: all 0.15s;
+  }
+  .day-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .day-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+  .exercise-block { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .exercise-header {
+    padding: 10px 14px; background: var(--surface2); display: flex; justify-content: space-between; align-items: center;
+  }
+  .exercise-name { font-size: 0.9rem; font-weight: 600; }
+  .exercise-scheme { font-size: 0.75rem; color: var(--accent); }
+  .sets-area { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .set-row { display: flex; gap: 8px; align-items: center; }
+  .set-label { font-size: 0.75rem; color: var(--muted); width: 36px; flex-shrink: 0; }
+  .set-row input {
+    flex: 1; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 0.85rem; text-align: center;
+  }
+  .set-row input:focus { outline: none; border-color: var(--accent); }
+  .set-row input::placeholder { color: var(--muted); }
+  .set-row .pr-badge { font-size: 0.7rem; color: var(--accent); font-weight: 700; white-space: nowrap; }
+
+  .save-workout-btn { width: 100%; }
+
+  /* Diet */
+  .macro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .macro-tile { text-align: center; padding: 12px 8px; background: var(--surface2); border-radius: 10px; }
+  .macro-tile .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .macro-tile .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+  .macro-tile .goal { font-size: 0.72rem; color: var(--muted); }
+
+  .food-entry { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .food-entry:last-child { border-bottom: none; }
+  .food-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+  .food-info { flex: 1; }
+  .food-info .name { font-size: 0.88rem; font-weight: 600; }
+  .food-info .macros { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .food-upload-area {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 20px;
+    text-align: center; cursor: pointer; position: relative; transition: border-color 0.15s;
+  }
+  .food-upload-area:hover { border-color: var(--accent); }
+  .food-upload-area input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .food-upload-area p { color: var(--muted); font-size: 0.85rem; }
+  .food-upload-area .icon { font-size: 1.8rem; margin-bottom: 6px; }
+
+  /* Progress */
+  .lift-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .lift-row:last-child { border-bottom: none; }
+  .lift-name { font-size: 0.88rem; }
+  .lift-stats { text-align: right; }
+  .lift-stats .current { font-size: 0.95rem; font-weight: 700; color: var(--accent); }
+  .lift-stats .trend { font-size: 0.72rem; color: var(--muted); }
+
+  .streak-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border-radius: 20px; padding: 6px 14px; font-size: 0.85rem; }
+  .streak-num { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+
+  /* Thinking indicator */
+  .thinking { display: flex; gap: 4px; padding: 12px 14px; }
+  .thinking span { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+  .thinking span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  /* Util */
+  .flex-row { display: flex; gap: 8px; align-items: center; }
+  .spacer { flex: 1; }
+  .text-muted { color: var(--muted); font-size: 0.82rem; }
+  .text-accent { color: var(--accent); }
+  .mt-8 { margin-top: 8px; }
+  .loading-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 999;
+  }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 480px) {
+    .tab { padding: 12px; }
+    .macro-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- API Key Setup Screen -->
+<div id="apiscreen">
+  <div style="font-size:3rem;margin-bottom:12px">🌙</div>
+  <h1>Moonshot</h1>
+  <p>Your personal AI gym coach.<br>Enter your Gemini API key to begin. Stored only on this device.</p>
+  <input type="password" id="apikey-input" placeholder="AIza..." autocomplete="off" />
+  <p style="font-size:0.72rem;color:var(--muted);margin-bottom:16px;max-width:360px">
+    Free tier: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com</a> — Gemini 1.5 Flash, 1500 requests/day
+  </p>
+  <button class="btn btn-primary" style="width:100%;max-width:420px" onclick="saveApiKey()">Start Training →</button>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <div>
+      <h1>🌙 Moonshot</h1>
+      <div class="meta" id="header-date"></div>
+    </div>
+    <div class="flex-row">
+      <span class="text-muted" id="img-header-counter"></span>
+      <button class="btn btn-ghost btn-sm" onclick="showSettings()">⚙</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="active" onclick="switchTab('chat')">💬 Coach</button>
+    <button onclick="switchTab('workout')">🏋️ Workout</button>
+    <button onclick="switchTab('diet')">🥗 Diet</button>
+    <button onclick="switchTab('progress')">📈 Progress</button>
+  </nav>
+
+  <!-- CHAT TAB -->
+  <div id="tab-chat" class="tab active">
+    <div class="card" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div id="chatbox"></div>
+      <div class="img-counter" id="img-counter-display"></div>
+      <div class="chat-input-row">
+        <button class="btn btn-ghost btn-sm img-btn" title="Attach food photo">
+          📷
+          <input type="file" id="chat-img-input" accept="image/*" onchange="handleChatImage(event)" />
+        </button>
+        <textarea id="chat-input" placeholder="Log a set, ask anything..." rows="1"
+          onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="sendChat()">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WORKOUT TAB -->
+  <div id="tab-workout" class="tab">
+    <div class="card">
+      <div class="card-title">Today's Session</div>
+      <div class="day-tabs" id="day-tabs"></div>
+    </div>
+    <div id="workout-exercises" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button class="btn btn-primary save-workout-btn" onclick="saveWorkout()">Save Workout</button>
+  </div>
+
+  <!-- DIET TAB -->
+  <div id="tab-diet" class="tab">
+    <div class="card">
+      <div class="card-title">Today's Macros</div>
+      <div class="macro-grid">
+        <div class="macro-tile">
+          <div class="val" id="macro-protein">0g</div>
+          <div class="lbl">Protein</div>
+          <div class="goal" id="macro-protein-goal"></div>
+        </div>
+        <div class="macro-tile">
+          <div class="val" id="macro-carbs">0g</div>
+          <div class="lbl">Carbs</div>
+        </div>
+        <div class="macro-tile">
+          <div class="val" id="macro-fat">0g</div>
+          <div class="lbl">Fat</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Log Food (AI Vision)</div>
+      <div class="food-upload-area" id="diet-upload-area">
+        <input type="file" accept="image/*" onchange="handleDietImage(event)" />
+        <div class="icon">📸</div>
+        <p>Tap to photograph your meal<br><span id="diet-img-quota" class="text-muted"></span></p>
+      </div>
+      <div id="diet-entries" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Daytime Strategy</div>
+      <ul style="font-size:0.85rem;color:var(--muted);line-height:1.8;padding-left:18px">
+        <li>Whey shake (25–30g protein)</li>
+        <li>2–3 boiled eggs (12–18g protein)</li>
+        <li>Greek yogurt / curd 200g (10–12g protein)</li>
+        <li>Paneer 100g (18g protein)</li>
+        <li>Handful mixed nuts (energy buffer)</li>
+      </ul>
+      <div class="text-muted mt-8" style="font-size:0.78rem">Night meal: prioritize protein source first, then carbs (rice/roti).</div>
+    </div>
+  </div>
+
+  <!-- PROGRESS TAB -->
+  <div id="tab-progress" class="tab">
+    <div class="card">
+      <div class="card-title">Training Streak</div>
+      <div class="flex-row">
+        <div class="streak-badge"><span class="streak-num" id="streak-num">0</span> days this week</div>
+        <div class="spacer"></div>
+        <div class="text-muted" id="total-sessions"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Key Lifts — Best This Week</div>
+      <div id="lift-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Volume Summary (This Week)</div>
+      <div id="volume-summary" class="text-muted" style="font-size:0.85rem;line-height:1.8"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="exportData()" style="align-self:center">Export All Data (JSON)</button>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ─────────────────────────────────────────────────────────────────
+
+const USER_PROFILE = {
+  name: "Avinash",
+  goal: "V-taper physique: wide flared lats, capped delts, strong upper back, lean tight midsection with defined abs.",
+  weight_kg: 72, // update as needed
+  protein_min: 115, // 1.6g/kg
+  protein_max: 158, // 2.2g/kg
+};
+
+const SPLIT = [
+  {
+    day: 1, label: "Day 1", name: "Push — Chest / Shoulders / Tris",
+    exercises: [
+      { name: "Incline Dumbbell Press", scheme: "3×6-8", sets: 3 },
+      { name: "Flat Bench / Machine Press", scheme: "3×8-10", sets: 3 },
+      { name: "Overhead DB / Smith Press", scheme: "3×8-10", sets: 3 },
+      { name: "Cable Lateral Raises", scheme: "4×12-15 ★", sets: 4 },
+      { name: "Overhead Tricep Extension", scheme: "3×10-12", sets: 3 },
+    ]
+  },
+  {
+    day: 2, label: "Day 2", name: "Pull — Back Width / Thickness / Bis",
+    exercises: [
+      { name: "Wide-Grip Lat Pulldowns / Pull-ups", scheme: "4×8-10 ★", sets: 4 },
+      { name: "Chest-Supported T-Bar / Cable Row", scheme: "3×8-10", sets: 3 },
+      { name: "Single-Arm DB Row", scheme: "3×10", sets: 3 },
+      { name: "Rear Delt Flyes", scheme: "4×12-15", sets: 4 },
+      { name: "Incline DB Bicep Curls", scheme: "3×10-12", sets: 3 },
+    ]
+  },
+  {
+    day: 3, label: "Day 3", name: "Legs — Quads / Hamstrings / Calves",
+    exercises: [
+      { name: "Barbell Squat / Leg Press", scheme: "4×6-8", sets: 4 },
+      { name: "Romanian Deadlifts (RDLs)", scheme: "3×8-10", sets: 3 },
+      { name: "Bulgarian Split Squats", scheme: "3×10/leg", sets: 3 },
+      { name: "Leg Extensions", scheme: "3×12-15", sets: 3 },
+      { name: "Standing Calf Raises", scheme: "4×15", sets: 4 },
+    ]
+  },
+  {
+    day: 4, label: "Day 4", name: "Upper — Weak Points & Volume",
+    exercises: [
+      { name: "Overhead Press", scheme: "3×8", sets: 3 },
+      { name: "Neutral-Grip Lat Pulldowns", scheme: "3×10-12", sets: 3 },
+      { name: "Flat DB Flyes / Pec Deck", scheme: "3×12", sets: 3 },
+      { name: "Lateral Raises", scheme: "4×12-15", sets: 4 },
+      { name: "Hammer Curls + Tricep Pushdowns (superset)", scheme: "3×12", sets: 3 },
+    ]
+  },
+  {
+    day: 5, label: "Day 5", name: "Lower Body & Core",
+    exercises: [
+      { name: "Trap Bar / Sumo Deadlift", scheme: "3×5-6", sets: 3 },
+      { name: "Goblet / Hack Squat", scheme: "3×10-12", sets: 3 },
+      { name: "Lying Leg Curls", scheme: "3×12-15", sets: 3 },
+      { name: "Hanging Leg Raises", scheme: "3×max ★", sets: 3 },
+      { name: "Cable Crunches", scheme: "3×12-15", sets: 3 },
+    ]
+  },
+];
+
+const SYSTEM_PROMPT = `You are Moonshot, Avinash's personal AI gym coach. Be concise, direct, and motivating.
+
+PROFILE:
+- User: Avinash Mamidi
+- Goal: ${USER_PROFILE.goal}
+- Training: 5-day commercial gym split (Push/Pull/Legs/Upper/Lower+Core)
+- Protein target: ${USER_PROFILE.protein_min}–${USER_PROFILE.protein_max}g/day
+- Nutrition: One home-cooked night meal + daytime portable high-protein foods (whey, eggs, curd, paneer)
+
+SPLIT:
+Day 1 Push: Incline DB Press 3×6-8, Flat Bench 3×8-10, OHP 3×8-10, Cable Laterals 4×12-15★, Tricep Ext 3×10-12
+Day 2 Pull: Wide Lat Pulldowns★ 4×8-10, Row 3×8-10, Single-arm Row 3×10, Rear Delt 4×12-15, Incline Curl 3×10-12
+Day 3 Legs: Squat 4×6-8, RDL 3×8-10, Bulgarian SS 3×10, Leg Ext 3×12-15, Calf Raises 4×15
+Day 4 Upper: OHP 3×8, Neutral Pulldowns 3×10-12, DB Flyes 3×12, Laterals 4×12-15, Hammer+Pushdown SS 3×12
+Day 5 Lower+Core: Deadlift 3×5-6, Hack Squat 3×10-12, Leg Curls 3×12-15, Hanging Leg Raises 3×max★, Cable Crunches 3×12-15
+
+★ = High priority for V-taper (lats width and shoulder caps are top priority)
+
+COACHING STYLE:
+- When user logs a set (e.g. "bench 80kg x8"), respond with: performance assessment, next set recommendation, and one tip if relevant
+- Progressive overload: suggest +2.5kg or +1 rep when they hit the top of the rep range
+- Be brief — they're in the gym. 2-3 sentences max per response unless asked for more
+- For food images: estimate protein/carbs/fat in grams and whether it fits daily targets
+- Weekly check-ins: review progress, flag weak points, adjust volume or nutrition`;
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+
+let API_KEY = localStorage.getItem('moonshot_apikey') || '';
+let chatHistory = [];
+let currentDay = todayDayIndex();
+let pendingImage = null; // { base64, mimeType }
+
+// ─── IMAGE QUOTA ─────────────────────────────────────────────────────────────
+
+function getQuotaKey() {
+  return 'moonshot_quota_' + new Date().toISOString().slice(0, 10);
+}
+
+function getWeekQuotaKey() {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day + 6) % 7));
+  return 'moonshot_wquota_' + monday.toISOString().slice(0, 10);
+}
+
+function getImagesUsedToday() {
+  return parseInt(localStorage.getItem(getQuotaKey()) || '0');
+}
+
+function getImagesUsedThisWeek() {
+  return parseInt(localStorage.getItem(getWeekQuotaKey()) || '0');
+}
+
+function incrementImageUsage() {
+  const dk = getQuotaKey(), wk = getWeekQuotaKey();
+  localStorage.setItem(dk, getImagesUsedToday() + 1);
+  localStorage.setItem(wk, getImagesUsedThisWeek() + 1);
+}
+
+function canUseImage() {
+  return getImagesUsedToday() < 5 && getImagesUsedThisWeek() < 25;
+}
+
+function updateImgCounterDisplay() {
+  const today = getImagesUsedToday();
+  const week = getImagesUsedThisWeek();
+  const remaining = Math.min(5 - today, 25 - week);
+  const el = document.getElementById('img-counter-display');
+  const hel = document.getElementById('img-header-counter');
+  const txt = `📷 ${remaining} images left today`;
+  if (el) { el.textContent = txt; el.className = 'img-counter' + (remaining <= 1 ? ' danger' : remaining <= 2 ? ' warn' : ''); }
+  if (hel) hel.textContent = remaining > 0 ? `📷×${remaining}` : '📷 0';
+  const dietEl = document.getElementById('diet-img-quota');
+  if (dietEl) dietEl.textContent = `${remaining} of 5 daily images remaining (${25 - week} this week)`;
+}
+
+// ─── API ─────────────────────────────────────────────────────────────────────
+
+async function callGemini(messages, imageData) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+  // Build contents array
+  const contents = [];
+
+  // System instruction as first user turn (Gemini doesn't have system role in this endpoint)
+  const histParts = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+
+  // Inject system prompt before first message
+  if (histParts.length > 0 && histParts[0].role === 'user') {
+    histParts[0].parts.unshift({ text: SYSTEM_PROMPT + '\n\n---\n\n' });
+  }
+
+  // If there's an image on the last message
+  if (imageData) {
+    const last = histParts[histParts.length - 1];
+    last.parts.push({ inline_data: { mime_type: imageData.mimeType, data: imageData.base64 } });
+  }
+
+  const body = { contents: histParts, generationConfig: { temperature: 0.7, maxOutputTokens: 512 } };
+
+  const res = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '(no response)';
+}
+
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+
+function addMessage(role, text, imgSrc) {
+  const box = document.getElementById('chatbox');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = role === 'ai' ? '🌙' : '💪';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  if (imgSrc) {
+    const img = document.createElement('img');
+    img.src = imgSrc; img.style.cssText = 'max-width:100%;border-radius:8px;margin-bottom:6px;display:block';
+    bubble.appendChild(img);
+  }
+  bubble.appendChild(document.createTextNode(text));
+  div.appendChild(avatar); div.appendChild(bubble);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function addThinking() {
+  const box = document.getElementById('chatbox');
+  const div = document.createElement('div');
+  div.className = 'msg ai'; div.id = 'thinking-bubble';
+  div.innerHTML = '<div class="msg-avatar">🌙</div><div class="msg-bubble"><div class="thinking"><span></span><span></span><span></span></div></div>';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function removeThinking() {
+  document.getElementById('thinking-bubble')?.remove();
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text && !pendingImage) return;
+
+  const imgData = pendingImage;
+  const imgSrc = imgData ? `data:${imgData.mimeType};base64,${imgData.base64}` : null;
+  pendingImage = null;
+  document.getElementById('chat-img-input').value = '';
+
+  const userMsg = text || '(analyzing food image)';
+  addMessage('user', userMsg, imgSrc);
+  input.value = ''; input.style.height = '';
+
+  if (imgData) {
+    if (!canUseImage()) {
+      addMessage('ai', "You've hit today's image limit (5/day, 25/week). Text chat is still unlimited!");
+      return;
+    }
+    incrementImageUsage();
+    updateImgCounterDisplay();
+  }
+
+  chatHistory.push({ role: 'user', content: userMsg });
+  addThinking();
+
+  try {
+    const reply = await callGemini(chatHistory, imgData);
+    removeThinking();
+    addMessage('ai', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+    // Keep history manageable
+    if (chatHistory.length > 30) chatHistory = chatHistory.slice(-28);
+  } catch(e) {
+    removeThinking();
+    addMessage('ai', `Error: ${e.message}. Check your API key in settings.`);
+  }
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+async function handleChatImage(e) {
+  const file = e.target.files[0]; if (!file) return;
+  if (!canUseImage()) {
+    alert("Image limit reached (5/day, 25/week). Text chat is unlimited."); return;
+  }
+  const b64 = await fileToBase64(file);
+  pendingImage = { base64: b64, mimeType: file.type };
+  // Pre-fill input hint
+  const inp = document.getElementById('chat-input');
+  if (!inp.value) inp.value = 'Analyze this food and estimate macros (protein, carbs, fat in grams)';
+}
+
+// ─── WORKOUT ─────────────────────────────────────────────────────────────────
+
+function todayDayIndex() {
+  // Map Mon=0→Day1, Tue=1→Day2 ... Fri=4→Day5, Sat/Sun→Day1
+  const d = new Date().getDay(); // 0=Sun
+  if (d === 0 || d === 6) return 0;
+  return d - 1; // Mon=0, Tue=1, ...
+}
+
+function renderDayTabs() {
+  const cont = document.getElementById('day-tabs');
+  cont.innerHTML = '';
+  SPLIT.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'day-btn' + (i === currentDay ? ' active' : '');
+    b.textContent = s.label;
+    b.onclick = () => { currentDay = i; renderDayTabs(); renderExercises(); };
+    cont.appendChild(b);
+  });
+}
+
+function getWorkoutKey(dayIndex) {
+  return `moonshot_wk_${new Date().toISOString().slice(0,10)}_d${dayIndex}`;
+}
+
+function getPrevWorkoutKey(dayIndex) {
+  // Find most recent saved workout for this day
+  for (let d = 1; d <= 30; d++) {
+    const date = new Date(); date.setDate(date.getDate() - d);
+    const k = `moonshot_wk_${date.toISOString().slice(0,10)}_d${dayIndex}`;
+    const v = localStorage.getItem(k);
+    if (v) return JSON.parse(v);
+  }
+  return null;
+}
+
+function renderExercises() {
+  const cont = document.getElementById('workout-exercises');
+  cont.innerHTML = '';
+  const day = SPLIT[currentDay];
+  const saved = JSON.parse(localStorage.getItem(getWorkoutKey(currentDay)) || '{}');
+  const prev = getPrevWorkoutKey(currentDay);
+
+  day.exercises.forEach((ex, ei) => {
+    const block = document.createElement('div');
+    block.className = 'exercise-block';
+    block.innerHTML = `<div class="exercise-header"><span class="exercise-name">${ex.name}</span><span class="exercise-scheme">${ex.scheme}</span></div><div class="sets-area" id="sets-${ei}"></div>`;
+    cont.appendChild(block);
+
+    const setsArea = block.querySelector(`#sets-${ei}`);
+    for (let s = 0; s < ex.sets; s++) {
+      const row = document.createElement('div');
+      row.className = 'set-row';
+      const savedSet = saved[ei]?.[s] || {};
+      const prevSet = prev?.[ei]?.[s] || {};
+
+      const wPlaceholder = prevSet.w ? `prev: ${prevSet.w}kg` : 'kg';
+      const rPlaceholder = prevSet.r ? `prev: ${prevSet.r}` : 'reps';
+      const isPR = savedSet.w && prevSet.w && parseFloat(savedSet.w) > parseFloat(prevSet.w);
+
+      row.innerHTML = `
+        <span class="set-label">Set ${s+1}</span>
+        <input type="number" step="0.5" placeholder="${wPlaceholder}" value="${savedSet.w||''}" data-ei="${ei}" data-si="${s}" data-field="w" style="max-width:80px" />
+        <input type="number" placeholder="${rPlaceholder}" value="${savedSet.r||''}" data-ei="${ei}" data-si="${s}" data-field="r" style="max-width:70px" />
+        ${isPR ? '<span class="pr-badge">🔥 PR</span>' : ''}
+      `;
+      setsArea.appendChild(row);
+    }
+  });
+}
+
+function saveWorkout() {
+  const data = {};
+  document.querySelectorAll('[data-ei]').forEach(inp => {
+    const ei = inp.dataset.ei, si = inp.dataset.si, f = inp.dataset.field;
+    if (!data[ei]) data[ei] = {};
+    if (!data[ei][si]) data[ei][si] = {};
+    data[ei][si][f] = inp.value;
+  });
+  localStorage.setItem(getWorkoutKey(currentDay), JSON.stringify(data));
+
+  // Mark today as trained
+  const today = new Date().toISOString().slice(0,10);
+  const trained = JSON.parse(localStorage.getItem('moonshot_trained_days') || '[]');
+  if (!trained.includes(today)) { trained.push(today); localStorage.setItem('moonshot_trained_days', JSON.stringify(trained)); }
+
+  // Notify
+  renderExercises();
+  addMessage('ai', `✅ ${SPLIT[currentDay].name} session saved! Switch to Coach tab to log sets or ask for next-session targets.`);
+  switchTab('chat');
+  updateProgress();
+}
+
+// ─── DIET ────────────────────────────────────────────────────────────────────
+
+function getDietKey() { return 'moonshot_diet_' + new Date().toISOString().slice(0,10); }
+
+function getDietData() { return JSON.parse(localStorage.getItem(getDietKey()) || '{"entries":[],"totals":{"p":0,"c":0,"f":0}}'); }
+
+function saveDietData(data) { localStorage.setItem(getDietKey(), JSON.stringify(data)); }
+
+function renderDiet() {
+  const data = getDietData();
+  document.getElementById('macro-protein').textContent = Math.round(data.totals.p) + 'g';
+  document.getElementById('macro-carbs').textContent = Math.round(data.totals.c) + 'g';
+  document.getElementById('macro-fat').textContent = Math.round(data.totals.f) + 'g';
+  document.getElementById('macro-protein-goal').textContent = `goal: ${USER_PROFILE.protein_min}–${USER_PROFILE.protein_max}g`;
+
+  const cont = document.getElementById('diet-entries');
+  cont.innerHTML = '';
+  data.entries.forEach(entry => {
+    const div = document.createElement('div');
+    div.className = 'food-entry';
+    div.innerHTML = `
+      ${entry.thumb ? `<img class="food-thumb" src="${entry.thumb}" />` : '<div class="food-thumb"></div>'}
+      <div class="food-info">
+        <div class="name">${entry.name}</div>
+        <div class="macros">P: ${entry.p}g · C: ${entry.c}g · F: ${entry.f}g</div>
+      </div>
+    `;
+    cont.appendChild(div);
+  });
+  updateImgCounterDisplay();
+}
+
+async function handleDietImage(e) {
+  const file = e.target.files[0]; if (!file) return;
+  if (!canUseImage()) { alert('Image limit reached (5/day, 25/week).'); return; }
+
+  const loading = showLoading();
+  try {
+    const b64 = await fileToBase64(file);
+    const imgData = { base64: b64, mimeType: file.type };
+    incrementImageUsage();
+    updateImgCounterDisplay();
+
+    const prompt = `Analyze this food image. Respond with ONLY a JSON object in this format (no markdown, no explanation):
+{"name":"<meal name>","p":<protein_grams>,"c":<carbs_grams>,"f":<fat_grams>}
+Be accurate. Estimate total for the entire visible portion.`;
+
+    const msgs = [{ role: 'user', content: prompt }];
+    const reply = await callGemini(msgs, imgData);
+
+    let parsed;
+    try {
+      const jsonStr = reply.match(/\{[\s\S]*\}/)?.[0];
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      throw new Error('Could not parse nutrition data from response');
+    }
+
+    const thumb = `data:${file.type};base64,${b64}`;
+    const data = getDietData();
+    data.entries.push({ ...parsed, thumb });
+    data.totals.p += parsed.p || 0;
+    data.totals.c += parsed.c || 0;
+    data.totals.f += parsed.f || 0;
+    saveDietData(data);
+    renderDiet();
+
+    // Reset file input
+    e.target.value = '';
+  } catch(err) {
+    alert('Analysis failed: ' + err.message);
+  } finally {
+    hideLoading(loading);
+  }
+}
+
+// ─── PROGRESS ────────────────────────────────────────────────────────────────
+
+function updateProgress() {
+  // Streak
+  const trained = JSON.parse(localStorage.getItem('moonshot_trained_days') || '[]');
+  const thisWeek = getThisWeekDates();
+  const daysThisWeek = thisWeek.filter(d => trained.includes(d)).length;
+  document.getElementById('streak-num').textContent = daysThisWeek;
+  document.getElementById('total-sessions').textContent = `${trained.length} total sessions`;
+
+  // Key lifts - scan last 7 days
+  const lifts = {};
+  SPLIT.forEach((day, di) => {
+    day.exercises.forEach((ex, ei) => {
+      for (let d = 0; d <= 7; d++) {
+        const date = new Date(); date.setDate(date.getDate() - d);
+        const k = `moonshot_wk_${date.toISOString().slice(0,10)}_d${di}`;
+        const wk = JSON.parse(localStorage.getItem(k) || 'null');
+        if (wk && wk[ei]) {
+          const sets = Object.values(wk[ei]);
+          const best = sets.reduce((max, s) => (!s.w ? max : Math.max(max, parseFloat(s.w) || 0)), 0);
+          if (best > 0 && (!lifts[ex.name] || best > lifts[ex.name])) lifts[ex.name] = best;
+          break;
+        }
+      }
+    });
+  });
+
+  const ll = document.getElementById('lift-list');
+  ll.innerHTML = '';
+  const keyLifts = ['Wide-Grip Lat Pulldowns / Pull-ups', 'Cable Lateral Raises', 'Incline Dumbbell Press', 'Barbell Squat / Leg Press', 'Trap Bar / Sumo Deadlift'];
+  keyLifts.forEach(name => {
+    if (lifts[name]) {
+      const row = document.createElement('div');
+      row.className = 'lift-row';
+      row.innerHTML = `<span class="lift-name">${name}</span><div class="lift-stats"><div class="current">${lifts[name]}kg</div><div class="trend">this week</div></div>`;
+      ll.appendChild(row);
+    }
+  });
+  if (ll.children.length === 0) ll.innerHTML = '<div class="text-muted" style="font-size:0.85rem">No workout data yet. Log your first session!</div>';
+
+  // Volume
+  const volEl = document.getElementById('volume-summary');
+  const vol = {};
+  SPLIT.forEach((day, di) => {
+    thisWeek.forEach(date => {
+      const k = `moonshot_wk_${date}_d${di}`;
+      const wk = JSON.parse(localStorage.getItem(k) || 'null');
+      if (wk) {
+        if (!vol[day.name]) vol[day.name] = 0;
+        Object.values(wk).forEach(ex => {
+          Object.values(ex).forEach(s => {
+            if (s.w && s.r) vol[day.name] += parseFloat(s.w) * parseInt(s.r);
+          });
+        });
+      }
+    });
+  });
+  volEl.innerHTML = Object.entries(vol).map(([k,v]) => `${k}: <strong style="color:var(--accent)">${Math.round(v).toLocaleString()} kg total</strong>`).join('<br>') || 'No data this week.';
+}
+
+function getThisWeekDates() {
+  const dates = [];
+  const now = new Date();
+  const day = now.getDay();
+  const monday = new Date(now); monday.setDate(now.getDate() - ((day + 6) % 7));
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+// ─── UI UTILS ────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`nav button[onclick="switchTab('${name}')"]`).classList.add('active');
+  if (name === 'workout') { renderDayTabs(); renderExercises(); }
+  if (name === 'diet') renderDiet();
+  if (name === 'progress') updateProgress();
+}
+
+function showLoading() {
+  const el = document.createElement('div'); el.className = 'loading-overlay';
+  el.innerHTML = '<div class="spinner"></div>'; document.body.appendChild(el); return el;
+}
+function hideLoading(el) { el?.remove(); }
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result.split(',')[1]);
+    r.onerror = rej; r.readAsDataURL(file);
+  });
+}
+
+function saveApiKey() {
+  const key = document.getElementById('apikey-input').value.trim();
+  if (!key.startsWith('AIza')) { alert('Please enter a valid Gemini API key (starts with AIza)'); return; }
+  localStorage.setItem('moonshot_apikey', key);
+  API_KEY = key;
+  initApp();
+}
+
+function showSettings() {
+  const key = prompt('Update Gemini API key (leave blank to cancel):', '');
+  if (key && key.startsWith('AIza')) { localStorage.setItem('moonshot_apikey', key); API_KEY = key; alert('API key updated.'); }
+  else if (key !== null && key !== '') alert('Invalid key — must start with AIza');
+}
+
+function exportData() {
+  const allData = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith('moonshot_')) allData[k] = localStorage.getItem(k);
+  }
+  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `moonshot-export-${new Date().toISOString().slice(0,10)}.json`; a.click();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+function initApp() {
+  document.getElementById('apiscreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  const now = new Date();
+  document.getElementById('header-date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  updateImgCounterDisplay();
+  renderDayTabs();
+  renderExercises();
+  renderDiet();
+  updateProgress();
+
+  // Welcome message
+  const dayName = SPLIT[currentDay].name;
+  addMessage('ai', `Hey Avinash! 💪 Today looks like ${dayName}. Ready to crush it?\n\nLog your sets here or ask me anything — nutrition, form, progression. I've got your profile loaded.`);
+}
+
+if (API_KEY) {
+  initApp();
+} else {
+  document.getElementById('apiscreen').style.display = 'flex';
+}
+</script>
+</body>
+</html>
