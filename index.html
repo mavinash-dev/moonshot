@@ -189,11 +189,16 @@ svg.chart{width:100%;height:100%}
     <input type="password" id="gkey" placeholder="AIza…" autocomplete="off">
   </div>
   <div class="setup-card">
-    <div class="setup-label">GitHub Repo (for weekly Claude plan)</div>
-    <p>Your repo where you push weekly Claude plans. Format: <code style="color:var(--dim)">username/repo</code></p>
-    <input type="text" id="ghrepo" placeholder="mavinash-dev/moonshot-gym" autocomplete="off">
+    <div class="setup-label">GitHub Repo</div>
+    <p>Same repo where you push weekly Claude plans and daily logs are committed automatically.</p>
+    <input type="text" id="ghrepo" placeholder="mavinash-dev/moonshot" autocomplete="off">
   </div>
-  <p class="setup-note">Stored only on this device.</p>
+  <div class="setup-card">
+    <div class="setup-label">GitHub PAT</div>
+    <p>Fine-grained token with Contents: Read & Write on this repo. Stored only on this device.</p>
+    <input type="password" id="ghpat" placeholder="github_pat_…" autocomplete="off">
+  </div>
+  <p class="setup-note">All credentials stored only on this device.</p>
   <button class="btn btn-white btn-full" style="max-width:400px" onclick="saveSetup()">Start →</button>
 </div>
 
@@ -322,9 +327,11 @@ svg.chart{width:100%;height:100%}
         <div class="lift-prog" id="lift-prog"></div>
       </div>
       <div class="card">
-        <div class="card-head"><span class="card-title">Progression Analysis</span><span class="mpill">Flash · On demand</span></div>
-        <button class="btn btn-white btn-full" id="prog-btn" onclick="getProgAnalysis()">Analyze My Progress</button>
-        <div id="prog-out"></div>
+        <div class="card-head">
+          <span class="card-title">Trajectory</span>
+          <span class="mpill" id="traj-pill">—</span>
+        </div>
+        <div id="prog-out"><p style="font-size:0.82rem;color:var(--muted)">Analysis runs automatically after each day is logged.</p></div>
       </div>
     </div>
   </div>
@@ -399,6 +406,7 @@ const KEY_LIFTS = ['Wide-Grip Lat Pulldowns / Pull-ups','Cable Lateral Raises','
 // ═══ STATE ════════════════════════════════════════════════════════════════════
 let GKEY = localStorage.getItem('ms_k') || '';
 let GHREPO = localStorage.getItem('ms_repo') || '';
+let GHPAT = localStorage.getItem('ms_pat') || '';
 let chatHist = [];
 let curDay = todayIdx();
 let pendImg = null;
@@ -521,6 +529,26 @@ function generateDailyLog(dayIdx, workoutData, dietData, weightKg, status){
 
 function commitDailyLog(log){
   localStorage.setItem(`ms_log_${today()}`, log);
+  if(GHPAT && GHREPO) pushLogToGitHub(log).catch(e=>console.warn('GitHub push failed:',e));
+}
+
+async function pushLogToGitHub(content){
+  const path = `logs/${today()}.txt`;
+  const url = `https://api.github.com/repos/${GHREPO}/contents/${path}`;
+  const b64 = btoa(unescape(encodeURIComponent(content)));
+  // check if file exists to get its sha
+  let sha;
+  try{
+    const check = await fetch(url, {headers:{'Authorization':`Bearer ${GHPAT}`,'Accept':'application/vnd.github+json'}});
+    if(check.ok){ const d=await check.json(); sha=d.sha; }
+  }catch{}
+  const body = {message:`log: ${today()}`, content:b64};
+  if(sha) body.sha = sha;
+  await fetch(url, {
+    method:'PUT',
+    headers:{'Authorization':`Bearer ${GHPAT}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
 }
 
 // ═══ DAY END FLOW ══════════════════════════════════════════════════════════
@@ -532,15 +560,16 @@ function showDayEndModal(){
   document.getElementById('modal-bg').style.display='flex';
 }
 function closeModal(){ document.getElementById('modal-bg').style.display='none'; }
-function confirmDone(){
+async function confirmDone(){
   closeModal();
   const wk=getWorkout(), dt=getDiet();
   const wt=JSON.parse(localStorage.getItem('ms_bw_'+today())||'null');
   const log=generateDailyLog(curDay,wk,dt,wt,'done');
   commitDailyLog(log);
   markTrained();
-  addMsg('ai',`✅ Day logged!\n\nWorkout: ${SPLIT[curDay].name}\nProtein: ${Math.round(dt.p)}g\n\nRest up. See you tomorrow 💪`);
+  addMsg('ai',`✅ Day logged! Pushing to GitHub & analyzing… 📊`);
   renderDayWidget();
+  await runAutoAnalysis(log, dt, wt);
 }
 function confirmSkip(){
   closeModal();
@@ -749,34 +778,68 @@ function renderLiftProg(){
     el.appendChild(row);
   });
 }
-function renderHistory(){renderWeightChart();renderWeightList();renderLiftProg();}
+function renderHistory(){renderWeightChart();renderWeightList();renderLiftProg();renderCachedAnalysis();}
 
-// ═══ PROGRESSION ANALYSIS ════════════════════════════════════════════════════
-async function getProgAnalysis(){
-  const btn=document.getElementById('prog-btn');btn.disabled=true;btn.textContent='Analyzing…';
-  const el=document.getElementById('prog-out');
-  try{
-    const bests=getBestLifts();
-    const wh=getWeightHistory().slice(-4);
-    const wkDts=weekDates();
-    const trained=JSON.parse(localStorage.getItem('ms_tr')||'[]');
-    const sessThisWk=wkDts.filter(d=>trained.includes(d)).length;
-    const prompt=`${P.name}'s progress data:
-Body weight (recent): ${wh.map(e=>`${e.date}: ${e.w}kg`).join(', ')||'not logged'}
+// ═══ AUTO ANALYSIS ════════════════════════════════════════════════════════════
+async function runAutoAnalysis(log, dt, wt){
+  const bests=getBestLifts();
+  const wh=getWeightHistory().slice(-7);
+  const trained=JSON.parse(localStorage.getItem('ms_tr')||'[]');
+  const sessThisWk=weekDates().filter(d=>trained.includes(d)).length;
+  const protDays=weekDates().map(d=>{const v=localStorage.getItem(`ms_d_${d}`);return v?JSON.parse(v).p:null;}).filter(v=>v!==null);
+  const avgProt=protDays.length?Math.round(protDays.reduce((a,b)=>a+b,0)/protDays.length):null;
+
+  const prompt=`${P.name}'s end-of-day update:
+Today: ${log||''}
+Body weight trend: ${wh.map(e=>`${e.date}: ${e.w}kg`).join(', ')||'not logged'}
 Sessions this week: ${sessThisWk}/5
+Avg protein this week: ${avgProt?`${avgProt}g`:'not logged'} (target: ${P.pmin}–${P.pmax}g)
 Best lifts: ${Object.entries(bests).map(([k,v])=>`${k}: ${v}kg`).join(', ')||'none yet'}
 Goal: ${P.goal}
-Active plan: ${activePlan?'yes (Claude weekly plan active)':'none'}
+${activePlan?`Active weekly plan: ${activePlan.slice(0,300)}…`:''}
 
-Give progression analysis:
-1. Weight trend assessment
-2. Top 2 lifts to push next (with specific target)
-3. Any lift lagging for V-taper goal
-4. One actionable focus for this week`;
+Respond in exactly this format:
+TRAJECTORY: [On Track / Needs Attention / Behind]
+SUMMARY: [2 sentences — what's going well and what needs work]
+NEXT: [1 specific action for tomorrow]`;
+
+  try{
     const r=await gemini([{role:'user',content:prompt}]);
-    el.innerHTML=`<div class="ai-block" style="margin-top:10px">${r}</div>`;
-  }catch(e){el.innerHTML=`<p style="color:var(--danger);font-size:0.8rem;margin-top:8px">${e.message}</p>`;}
-  finally{btn.disabled=false;btn.textContent='Analyze My Progress';}
+    localStorage.setItem('ms_analysis_'+today(), r);
+    renderCachedAnalysis();
+    // surface in chat
+    addMsg('ai', r);
+  }catch(e){
+    addMsg('ai',`Analysis failed: ${e.message}`);
+  }
+}
+
+function renderCachedAnalysis(){
+  const el=document.getElementById('prog-out');
+  const pill=document.getElementById('traj-pill');
+  if(!el) return;
+  // find most recent analysis
+  let analysis='', analysisDate='';
+  for(let d=0;d<=7;d++){
+    const dt=new Date();dt.setDate(dt.getDate()-d);
+    const k='ms_analysis_'+dt.toISOString().slice(0,10);
+    const v=localStorage.getItem(k);
+    if(v){analysis=v;analysisDate=dt.toISOString().slice(0,10);break;}
+  }
+  if(!analysis){
+    el.innerHTML='<p style="font-size:0.82rem;color:var(--muted)">Analysis runs automatically after each day is logged.</p>';
+    if(pill) pill.textContent='—';
+    return;
+  }
+  // parse trajectory
+  const trajMatch=analysis.match(/TRAJECTORY:\s*(.+)/i);
+  const traj=trajMatch?trajMatch[1].trim():'—';
+  if(pill){
+    pill.textContent=traj;
+    pill.style.color=traj.includes('On Track')?'var(--green)':traj.includes('Behind')?'var(--danger)':'var(--warn)';
+    pill.style.borderColor=traj.includes('On Track')?'#22c55e44':traj.includes('Behind')?'#ef444444':'#f59e0b44';
+  }
+  el.innerHTML=`<div class="ai-block" style="margin-top:8px;font-size:0.83rem">${analysis}</div><p style="font-size:0.68rem;color:var(--muted);margin-top:6px;text-align:right">Last updated: ${analysisDate}</p>`;
 }
 
 // ═══ WEEKLY STATS ══════════════════════════════════════════════════════════
@@ -810,10 +873,11 @@ function go(name){
 
 // ═══ SETTINGS ════════════════════════════════════════════════════════════════
 function openSettings(){
-  const c=prompt('Settings:\n1 — Change Gemini key\n2 — Change GitHub repo\n3 — Clear all data\n\nEnter number:');
+  const c=prompt('Settings:\n1 — Change Gemini key\n2 — Change GitHub repo\n3 — Change GitHub PAT\n4 — Clear all data\n\nEnter number:');
   if(c==='1'){const k=prompt('Gemini key (AIza…):');if(k?.startsWith('AIza')){localStorage.setItem('ms_k',k);GKEY=k;alert('Updated!');}}
   else if(c==='2'){const r=prompt('GitHub repo (user/repo):');if(r?.includes('/')){localStorage.setItem('ms_repo',r);GHREPO=r;fetchWeeklyPlan();}}
-  else if(c==='3'){if(confirm('Delete ALL Moonshot data?')){Object.keys(localStorage).filter(k=>k.startsWith('ms_')).forEach(k=>localStorage.removeItem(k));location.reload();}}
+  else if(c==='3'){const p=prompt('GitHub PAT:');if(p){localStorage.setItem('ms_pat',p);GHPAT=p;alert('Updated!');}}
+  else if(c==='4'){if(confirm('Delete ALL Moonshot data?')){Object.keys(localStorage).filter(k=>k.startsWith('ms_')).forEach(k=>localStorage.removeItem(k));location.reload();}}
 }
 
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
@@ -826,9 +890,11 @@ function exportData(){const all={};Object.keys(localStorage).filter(k=>k.startsW
 function saveSetup(){
   const gk=document.getElementById('gkey').value.trim();
   const repo=document.getElementById('ghrepo').value.trim();
+  const pat=document.getElementById('ghpat').value.trim();
   if(!gk.startsWith('AIza')){alert('Gemini key must start with AIza');return;}
   localStorage.setItem('ms_k',gk);GKEY=gk;
   if(repo.includes('/')){localStorage.setItem('ms_repo',repo);GHREPO=repo;}
+  if(pat){localStorage.setItem('ms_pat',pat);GHPAT=pat;}
   boot();
 }
 function boot(){
